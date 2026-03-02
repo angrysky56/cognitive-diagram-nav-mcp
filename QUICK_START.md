@@ -127,17 +127,7 @@ To use this MCP server with Claude Desktop:
 
 ### 2. Add Server Configuration
 ```json
-{
-  "mcpServers": {
-    "cognitive-diagram-nav": {
-      "command": "uv",
-      "args": [
-        "run",
-        "cognitive-diagram-nav"
-      ]
-    }
-  }
-}
+
 ```
 
 **Important**: Replace the path with the actual path on your system.

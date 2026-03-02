@@ -4,7 +4,7 @@
       "command": "uv",
       "args": [
         "--directory",
-        "/home/ty/Repositories/ai_workspace/cognitive-diagram-nav-mcp",
+        "/your-path-to/cognitive-diagram-nav-mcp",
         "run",
         "cognitive-diagram-nav"
       ]

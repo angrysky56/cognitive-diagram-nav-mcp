@@ -89,10 +89,10 @@ Add to your Claude configuration (usually `~/.config/Claude/claude_desktop_confi
     "cognitive-diagram-nav": {
       "command": "uv",
       "args": [
+        "--directory",
+        "/your-path-to/cognitive-diagram-nav-mcp",
         "run",
-        "--with",
-        "mcp",
-        "/path/to/cognitive-diagram-nav-mcp/src/cognitive_diagram_nav/server.py"
+        "cognitive-diagram-nav"
       ]
     }
   }

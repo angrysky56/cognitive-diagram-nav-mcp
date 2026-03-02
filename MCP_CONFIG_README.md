@@ -65,12 +65,19 @@ Once connected, Claude will have access to:
 **Path wrong for your system?**
 Update the path in the config to match your installation:
 ```json
-"args": [
-  "run",
-  "--with",
-  "mcp",
-  "/path/to/your/cognitive-diagram-nav-mcp/src/cognitive_diagram_nav/server.py"
-]
+{
+  "mcpServers": {
+    "cognitive-diagram-nav": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/your-path-to/cognitive-diagram-nav-mcp",
+        "run",
+        "cognitive-diagram-nav"
+      ]
+    }
+  }
+}
 ```
 
 ## Updating
