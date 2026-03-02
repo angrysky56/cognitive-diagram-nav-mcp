@@ -123,6 +123,7 @@ class Diagram:
                 label=node_spec['label'],
                 node_type=node_spec.get('type', 'operation'),
                 metadata=node_spec.get('metadata', {}),
+                embedding=node_spec.get('embedding'),
             )
             diagram.nodes[node.id] = node
 

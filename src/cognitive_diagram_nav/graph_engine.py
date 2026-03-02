@@ -9,6 +9,7 @@ import structlog
 from typing import Any, Optional
 from collections import deque
 import networkx as nx
+import math
 
 from .models import Diagram, DiagramNode, DiagramEdge, Pattern
 
@@ -57,7 +58,7 @@ class GraphEngine:
         Create a new diagram from specification.
 
         Args:
-            nodes: List of node dicts with 'id', 'label', 'type'
+            nodes: List of node dicts with 'id', 'label', 'type', optional 'embedding'
             edges: List of edge dicts with 'source', 'target', 'label'
 
         Returns:
@@ -170,7 +171,7 @@ class GraphEngine:
             diagram_id: ID of diagram
             start_node: Starting node
             goal_node: Target node
-            heuristic: 'distance' or 'reward'
+            heuristic: 'distance', 'reward', or 'semantic_similarity'
 
         Returns:
             dict with path, cost, explanation
@@ -187,9 +188,27 @@ class GraphEngine:
             g = self._build_networkx_graph(diagram)
 
         try:
-            # Use Dijkstra's algorithm for shortest path
-            path = nx.shortest_path(g, start_node, goal_node, weight='weight')
-            cost = nx.shortest_path_length(g, start_node, goal_node, weight='weight')
+            if heuristic == 'semantic_similarity':
+                goal_node_obj = diagram.nodes.get(goal_node)
+                if not goal_node_obj or not goal_node_obj.embedding:
+                    self.logger.warning("Goal node missing embedding, falling back to Dijkstra")
+                    path = nx.shortest_path(g, start_node, goal_node, weight='weight')
+                    cost = nx.shortest_path_length(g, start_node, goal_node, weight='weight')
+                else:
+                    def astar_heuristic(u, v):
+                        # v is always goal_node in A* signature heuristic(u, v)
+                        node_u = diagram.nodes.get(u)
+                        if not node_u or not node_u.embedding:
+                            return 1.0 # default distance if no embedding
+                        sim = self._cosine_similarity(node_u.embedding, goal_node_obj.embedding)
+                        return max(0.0, 1.0 - sim) # distance is 1 - similarity
+
+                    path = nx.astar_path(g, start_node, goal_node, heuristic=astar_heuristic, weight='weight')
+                    cost = nx.astar_path_length(g, start_node, goal_node, heuristic=astar_heuristic, weight='weight')
+            else:
+                # Use Dijkstra's algorithm for shortest path
+                path = nx.shortest_path(g, start_node, goal_node, weight='weight')
+                cost = nx.shortest_path_length(g, start_node, goal_node, weight='weight')
 
             return {
                 'found': True,
@@ -424,3 +443,62 @@ class GraphEngine:
                 results['is_dag'] = nx.is_directed_acyclic_graph(g)
 
         return results
+
+    def _cosine_similarity(self, vec1: list[float], vec2: list[float]) -> float:
+        """Compute cosine similarity between two vectors."""
+        if not vec1 or not vec2 or len(vec1) != len(vec2):
+            return 0.0
+
+        dot_product = sum(a * b for a, b in zip(vec1, vec2))
+        magnitude1 = math.sqrt(sum(a * a for a in vec1))
+        magnitude2 = math.sqrt(sum(b * b for b in vec2))
+
+        if magnitude1 == 0 or magnitude2 == 0:
+            return 0.0
+
+        return dot_product / (magnitude1 * magnitude2)
+
+    def node_semantic_search(
+        self,
+        diagram_id: str,
+        target_embedding: list[float],
+        top_k: int = 5,
+        threshold: float = 0.5,
+    ) -> dict[str, Any]:
+        """
+        Search for nodes semantically similar to a target embedding.
+
+        Args:
+            diagram_id: ID of diagram
+            target_embedding: The embedding vector to compare against
+            top_k: Maximum number of results to return
+            threshold: Minimum similarity score to include
+
+        Returns:
+            dict with similar nodes and scores
+        """
+        diagram = self.get_diagram(diagram_id)
+        if not diagram:
+            raise ValueError(f"Diagram {diagram_id} not found")
+
+        similarities = []
+        for node_id, node in diagram.nodes.items():
+            if node.embedding:
+                score = self._cosine_similarity(target_embedding, node.embedding)
+                if score >= threshold:
+                    similarities.append({
+                        'id': node_id,
+                        'label': node.label,
+                        'type': node.node_type,
+                        'score': score
+                    })
+
+        # Sort by score descending
+        similarities.sort(key=lambda x: x['score'], reverse=True)
+        results = similarities[:top_k]
+
+        return {
+            'target_dimensions': len(target_embedding),
+            'nodes_checked': len([n for n in diagram.nodes.values() if n.embedding]),
+            'matches': results
+        }

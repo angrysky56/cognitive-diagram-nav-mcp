@@ -54,6 +54,7 @@ def diagram_create(
             - label: Human-readable label (string)
             - type: One of 'operation', 'terminal', 'control', 'composite'
             - metadata: Optional dict of additional properties
+            - embedding: Optional list of floats for semantic search
 
         edges: List of edge specifications. Each must have:
             - source: Source node ID (string)
@@ -199,7 +200,7 @@ def navigate_guided(
         diagram_id: ID of diagram
         start_node: Starting node ID
         goal_node: Target node ID
-        heuristic: 'distance' (default) or 'reward'
+        heuristic: 'distance' (default), 'reward', or 'semantic_similarity'
 
     Returns:
         dict with path, cost, num_steps, found flag
@@ -330,6 +331,42 @@ def compute_metrics(
         }
     except Exception as e:
         logger.error(f"Error computing metrics: {e}")
+        return {
+            'success': False,
+            'error': str(e),
+        }
+
+
+@server.tool()
+def node_semantic_search(
+    diagram_id: str,
+    target_embedding: list[float],
+    top_k: int = 5,
+    threshold: float = 0.5,
+) -> dict[str, Any]:
+    """
+    Search for nodes semantically similar to a target embedding.
+
+    Args:
+        diagram_id: ID of diagram
+        target_embedding: The embedding vector (list of floats) to compare against
+        top_k: Maximum number of results to return (default: 5)
+        threshold: Minimum cosine similarity score to include (default: 0.5)
+
+    Returns:
+        dict with similar nodes and similarity scores
+    """
+    try:
+        logger.info(f"Semantic search in {diagram_id} for top {top_k} matches")
+        result = graph_engine.node_semantic_search(
+            diagram_id, target_embedding, top_k, threshold
+        )
+        return {
+            'success': True,
+            **result,
+        }
+    except Exception as e:
+        logger.error(f"Error in semantic search: {e}")
         return {
             'success': False,
             'error': str(e),
