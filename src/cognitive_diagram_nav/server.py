@@ -656,6 +656,77 @@ def node_semantic_search(
 
 
 # ============================================================================
+# Tool: Persistence Management
+# ============================================================================
+
+
+@server.tool()
+def diagram_save(diagram_id: str) -> dict[str, Any]:
+    """
+    Force an immediate sync of a specific diagram to disk.
+
+    Args:
+        diagram_id: ID of diagram to save
+
+    Returns:
+        dict containing success status
+    """
+    try:
+        success = graph_engine.save_diagram(diagram_id)
+        return {
+            "success": success,
+            "diagram_id": diagram_id,
+            "message": "Diagram saved to disk" if success else "Failed to save diagram",
+        }
+    except ValueError as e:
+        logger.error("Error saving diagram", diagram_id=diagram_id, error=str(e), exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@server.tool()
+def diagram_list_saved() -> dict[str, Any]:
+    """
+    List all diagram IDs currently persisted on disk.
+
+    Returns:
+        dict with list of saved diagram IDs
+    """
+    try:
+        saved_ids = graph_engine.list_saved_diagrams()
+        return {
+            "success": True,
+            "saved_diagram_ids": saved_ids,
+            "count": len(saved_ids),
+        }
+    except (RuntimeError, OSError) as e:
+        logger.error("Error listing saved diagrams", error=str(e), exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@server.tool()
+def diagram_delete(diagram_id: str) -> dict[str, Any]:
+    """
+    Delete a diagram from both active memory and persisted storage.
+
+    Args:
+        diagram_id: ID of diagram to delete
+
+    Returns:
+        dict containing success status
+    """
+    try:
+        success = graph_engine.delete_diagram(diagram_id)
+        return {
+            "success": success,
+            "diagram_id": diagram_id,
+            "message": "Diagram deleted" if success else "Failed to delete diagram",
+        }
+    except ValueError as e:
+        logger.error("Error deleting diagram", diagram_id=diagram_id, error=str(e), exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+# ============================================================================
 # Tool: Server Info & Discovery
 # ============================================================================
 
@@ -680,12 +751,16 @@ def server_info() -> dict[str, Any]:
             "proof_export",
             "state_space_exploration",
             "structural_equivalence",
+            "persistence",
         ],
         "active_diagrams": len(graph_engine.diagrams),
         "max_diagrams": graph_engine.max_diagrams,
         "tools": [
             "diagram_create",
             "diagram_load",
+            "diagram_save",
+            "diagram_list_saved",
+            "diagram_delete",
             "navigate_breadth_first",
             "navigate_guided",
             "analyze_reachability",
@@ -697,6 +772,7 @@ def server_info() -> dict[str, Any]:
             "check_diagram_equivalence",
             "explore_equivalent_states",
             "compute_metrics",
+            "node_semantic_search",
             "server_info",
         ],
     }

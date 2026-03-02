@@ -6,6 +6,7 @@ over directed acyclic graphs representing logical/mathematical structures.
 """
 
 import collections
+import datetime
 import math
 import random
 import uuid
@@ -15,6 +16,7 @@ import networkx as nx
 import structlog
 
 from .models import DerivationStep, Diagram, DiagramEdge, DiagramNode
+from .storage import StorageManager
 
 logger = structlog.get_logger(__name__)
 
@@ -39,19 +41,21 @@ class GraphEngine:
     Thread-safe for MCP server use.
     """
 
-    def __init__(self, max_diagrams: int = 100) -> None:
+    def __init__(self, max_diagrams: int = 100, storage_dir: Optional[str] = None) -> None:
         """
         Initialize the reasoning engine.
 
         Args:
             max_diagrams: Maximum number of diagrams to keep in memory
+            storage_dir: Optional directory for disk persistence
         """
-        self.diagrams: dict[str, Diagram] = {}
+        self.diagrams: collections.OrderedDict[str, Diagram] = collections.OrderedDict()
         self.max_diagrams = max_diagrams
         self.graph_cache: dict[str, nx.DiGraph] = {}
         self.logger = structlog.get_logger(__name__)
         self.memories: dict[str, NavigationMemory] = {}
         self._random_engine: random.Random = random.SystemRandom()
+        self.storage = StorageManager(storage_dir)
 
     def create_diagram(
         self,
@@ -76,31 +80,100 @@ class GraphEngine:
         if not diagram.is_valid():
             raise ValueError("Invalid diagram specification")
 
-        # Check for cyclic diagram references
-        for node in diagram.nodes.values():
-            if node.sub_diagram_id:
-                visited_diagrams = {diagram.diagram_id}
-                queue = [node.sub_diagram_id]
-                while queue:
-                    curr_id = queue.pop(0)
-                    if curr_id in visited_diagrams:
-                        raise ValueError(f"Cyclic diagram reference detected: {curr_id}")
-                    visited_diagrams.add(curr_id)
-                    curr_diag = self.get_diagram(curr_id)
-                    if curr_diag:
-                        for sub_node in curr_diag.nodes.values():
-                            if sub_node.sub_diagram_id:
-                                queue.append(sub_node.sub_diagram_id)
+        # Basic cycle detection if composites are present
+        if any(n.sub_diagram_id for n in diagram.nodes.values()):
+            if self._check_hierarchical_cycle(diagram.diagram_id, diagram):
+                raise ValueError("Cyclic diagram reference detected")
 
         self.diagrams[diagram.diagram_id] = diagram
-        self._build_networkx_graph(diagram)
+        self.diagrams.move_to_end(diagram.diagram_id)
+        self._evict_lru()
 
-        self.logger.info(f"Created diagram {diagram.diagram_id} with {diagram.num_nodes()} nodes")
+        # Persist to disk
+        self.storage.save_diagram(diagram)
+
+        self.logger.info(
+            "Created diagram", diagram_id=diagram.diagram_id, num_nodes=len(nodes)
+        )  # Use diagram.diagram_id here
         return diagram.diagram_id
 
+    def _check_hierarchical_cycle(self, root_diagram_id: str, root_diagram: Diagram) -> bool:
+        """
+        Checks for hierarchical cycles within composite nodes.
+        This is a placeholder implementation. A full implementation would traverse
+        the sub_diagram_id links and detect cycles.
+        """
+        # For now, a simple check that prevents a diagram from containing itself directly
+        # or indirectly through a short chain. A full implementation would need to
+        # traverse the graph of diagrams.
+        visited = {root_diagram_id}
+        queue = collections.deque([root_diagram])
+
+        while queue:
+            current_diag = queue.popleft()
+            for node in current_diag.nodes.values():
+                if node.sub_diagram_id:
+                    if node.sub_diagram_id == root_diagram_id:
+                        return True  # Direct cycle
+                    if node.sub_diagram_id in visited:
+                        # This indicates a cycle in the diagram hierarchy
+                        return True
+
+                    visited.add(node.sub_diagram_id)
+                    sub_diag = self.get_diagram(node.sub_diagram_id)
+                    if sub_diag:
+                        queue.append(sub_diag)
+        return False
+
+    def _evict_lru(self) -> None:
+        """Evict least recently used diagrams to disk if over limit."""
+        while len(self.diagrams) > self.max_diagrams:
+            diag_id, diag = self.diagrams.popitem(last=False)
+            # Ensure it's saved before evicting from memory
+            self.storage.save_diagram(diag)
+            self.graph_cache.pop(diag_id, None)
+            self.logger.info("Evicted diagram to disk (LRU)", diagram_id=diag_id)
+
     def get_diagram(self, diagram_id: str) -> Optional[Diagram]:
-        """Retrieve a diagram by ID."""
-        return self.diagrams.get(diagram_id)
+        """
+        Retrieve a diagram by ID. Checks disk if not in memory.
+
+        Args:
+            diagram_id: The unique ID
+
+        Returns:
+            Optional[Diagram]: The diagram or None
+        """
+        if diagram_id in self.diagrams:
+            self.diagrams.move_to_end(diagram_id)
+            return self.diagrams[diagram_id]
+
+        # Check disk
+        diagram = self.storage.load_diagram(diagram_id)
+        if diagram:
+            self.diagrams[diagram_id] = diagram
+            self.diagrams.move_to_end(diagram_id)
+            self._evict_lru()
+            return diagram
+
+        return None
+
+    def save_diagram(self, diagram_id: str) -> bool:
+        """Explicitly save a diagram to disk."""
+        diagram = self.get_diagram(diagram_id)
+        if diagram:
+            return self.storage.save_diagram(diagram)
+        return False
+
+    def delete_diagram(self, diagram_id: str) -> bool:
+        """Delete a diagram from memory and disk."""
+        self.diagrams.pop(diagram_id, None)
+        self.graph_cache.pop(diagram_id, None)
+        return self.storage.delete_diagram(diagram_id)
+
+    def list_saved_diagrams(self) -> list[str]:
+        """List all diagram IDs persisted on disk."""
+        return self.storage.list_diagrams()
 
     def _build_networkx_graph(self, diagram: Diagram) -> nx.DiGraph:
         """Build NetworkX representation for algorithms."""
@@ -456,6 +529,8 @@ class GraphEngine:
         if not diagram:
             raise ValueError(f"Diagram {diagram_id} not found")
 
+        rule_name = rule_spec.get("rule_name", "Unnamed Rule")
+
         lhs_nodes = rule_spec.get("lhs", {}).get("nodes", {})
         rhs_nodes = rule_spec.get("rhs", {}).get("nodes", {})
         lhs_edges = rule_spec.get("lhs", {}).get("edges", [])
@@ -561,15 +636,24 @@ class GraphEngine:
         # Clear cache since graph topology changed
         self.graph_cache.pop(diagram_id, None)
 
-        rule_name = rule_spec.get("rule_name", "Unnamed Rule")
+        # Record derivation step
         step = DerivationStep(
             rule_name=rule_name,
             match_mapping=match_mapping,
             diagram_before=diagram_id,
             diagram_after=diagram_id,  # DPO in-place for now
             description=f"Applied rule '{rule_name}' at {match_mapping}",
+            timestamp=datetime.datetime.now().timestamp(),
         )
+
         diagram.transformations.append(step)
+
+        # Update diagrams collection order
+        if diagram_id in self.diagrams:
+            self.diagrams.move_to_end(diagram_id)
+
+        # Persist change
+        self.storage.save_diagram(diagram)
 
         self.logger.info(f"Successfully applied rewrite rule '{rule_name}' to {diagram_id}")
 
@@ -940,6 +1024,13 @@ class GraphEngine:
             description=f"Extracted nodes into composite {composite_id} (subdiagram {sub_diagram_id})",
         )
         diagram.transformations.append(step)
+
+        # Update diagrams collection order
+        if diagram_id in self.diagrams:
+            self.diagrams.move_to_end(diagram_id)
+
+        # Persist change
+        self.storage.save_diagram(diagram)
 
         return {
             "success": True,
