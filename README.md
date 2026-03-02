@@ -232,8 +232,8 @@ uv run sphinx-build -b html . _build
 - [x] Basic MCP tools (create, load, navigate)
 - [ ] Comprehensive testing
 
-### Phase 2: Advanced Navigation
-- [ ] Memory-augmented exploration with vectorized embeddings
+### Phase 2: Advanced Navigation (In Progress)
+- [x] Memory-augmented exploration with vectorized embeddings
 - [ ] Hierarchical reasoning with diagram composition
 - [ ] Approximate algorithms for large graphs
 

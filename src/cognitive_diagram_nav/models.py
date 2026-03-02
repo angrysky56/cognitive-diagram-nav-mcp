@@ -5,10 +5,10 @@ Implements graph representation, patterns, and navigation memory
 following Quantomatic's diagrammatic reasoning principles.
 """
 
-from dataclasses import dataclass, field
-from typing import Any, Optional
-from datetime import datetime
 import uuid
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any, Optional
 
 
 @dataclass
@@ -25,12 +25,13 @@ class DiagramNode:
     node_type: str  # 'operation', 'terminal', 'control', 'composite'
     metadata: dict[str, Any] = field(default_factory=dict)
     embedding: Optional[list[float]] = None
+    sub_diagram_id: Optional[str] = None
     visited: bool = False
     depth: int = 0
 
     def __post_init__(self) -> None:
         """Validate node on creation."""
-        valid_types = {'operation', 'terminal', 'control', 'composite'}
+        valid_types = {"operation", "terminal", "control", "composite"}
         if self.node_type not in valid_types:
             raise ValueError(f"node_type must be one of {valid_types}")
 
@@ -84,6 +85,48 @@ class Pattern:
 
 
 @dataclass
+class RewriteRule:
+    """
+    Formally defines a Double-Pushout (DPO) graph rewrite rule.
+
+    Consists of a Left-Hand Side (LHS) pattern to match, and a
+    Right-Hand Side (RHS) pattern to replace it with.
+    """
+
+    rule_name: str
+    lhs: Pattern
+    rhs: Pattern
+    description: str = ""
+
+    def validate(self) -> bool:
+        """
+        Verify the rule is well-formed.
+
+        Boundary nodes (nodes present in BOTH lhs and rhs) act as the gluing interface.
+        """
+        if not self.lhs.validate() or not self.rhs.validate():
+            return False
+
+        return True
+
+
+@dataclass
+class DerivationStep:
+    """
+    Represents a single step in a proof derivation.
+
+    Captures the rule applied, the state change, and the context.
+    """
+
+    rule_name: str
+    match_mapping: dict[str, str]
+    timestamp: float = field(default_factory=lambda: datetime.now().timestamp())
+    description: Optional[str] = None
+    diagram_before: Optional[str] = None  # diagram_id before
+    diagram_after: Optional[str] = None  # diagram_id after
+
+
+@dataclass
 class Diagram:
     """
     Complete representation of a reasoning diagram.
@@ -97,12 +140,12 @@ class Diagram:
     edges: list[DiagramEdge] = field(default_factory=list)
     root_node: Optional[str] = None
     invariants: list[str] = field(default_factory=list)  # proven properties
-    transformations: list[str] = field(default_factory=list)  # rule application history
+    transformations: list[DerivationStep] = field(default_factory=list)  # rule application history
     created_at: float = field(default_factory=lambda: datetime.now().timestamp())
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @staticmethod
-    def create(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> 'Diagram':
+    def create(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> "Diagram":
         """
         Factory method to create a new diagram from node/edge specifications.
 
@@ -119,28 +162,29 @@ class Diagram:
         # Add nodes
         for node_spec in nodes:
             node = DiagramNode(
-                id=node_spec['id'],
-                label=node_spec['label'],
-                node_type=node_spec.get('type', 'operation'),
-                metadata=node_spec.get('metadata', {}),
-                embedding=node_spec.get('embedding'),
+                id=node_spec["id"],
+                label=node_spec["label"],
+                node_type=node_spec.get("type", "operation"),
+                metadata=node_spec.get("metadata", {}),
+                embedding=node_spec.get("embedding"),
+                sub_diagram_id=node_spec.get("sub_diagram_id"),
             )
             diagram.nodes[node.id] = node
 
         # Add edges
         for edge_spec in edges:
             edge = DiagramEdge(
-                source=edge_spec['source'],
-                target=edge_spec['target'],
-                label=edge_spec['label'],
-                properties=edge_spec.get('properties', {}),
-                weight=edge_spec.get('weight', 1.0),
+                source=edge_spec["source"],
+                target=edge_spec["target"],
+                label=edge_spec["label"],
+                properties=edge_spec.get("properties", {}),
+                weight=edge_spec.get("weight", 1.0),
             )
             diagram.edges.append(edge)
 
         # Set root if not provided
         if diagram.nodes:
-            diagram.root_node = nodes[0]['id']
+            diagram.root_node = nodes[0]["id"]
 
         return diagram
 

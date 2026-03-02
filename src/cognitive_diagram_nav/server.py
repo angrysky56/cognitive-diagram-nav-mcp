@@ -6,9 +6,9 @@ through the Model Context Protocol.
 """
 
 import sys
-import structlog
 from typing import Any
 
+import structlog
 from mcp.server.fastmcp import FastMCP
 
 from .graph_engine import GraphEngine
@@ -75,18 +75,18 @@ def diagram_create(
             raise RuntimeError("Failed to retrieve created diagram")
 
         return {
-            'success': True,
-            'diagram_id': diagram_id,
-            'num_nodes': diagram.num_nodes(),
-            'num_edges': diagram.num_edges(),
-            'validity': diagram.is_valid(),
-            'root_node': diagram.root_node,
+            "success": True,
+            "diagram_id": diagram_id,
+            "num_nodes": diagram.num_nodes(),
+            "num_edges": diagram.num_edges(),
+            "validity": diagram.is_valid(),
+            "root_node": diagram.root_node,
         }
-    except Exception as e:
-        logger.error(f"Error creating diagram: {e}")
+    except (ValueError, RuntimeError) as e:
+        logger.error("Error creating diagram", error=str(e), node_count=len(nodes), exc_info=True)
         return {
-            'success': False,
-            'error': str(e),
+            "success": False,
+            "error": str(e),
         }
 
 
@@ -105,43 +105,53 @@ def diagram_load(diagram_id: str) -> dict[str, Any]:
         diagram = graph_engine.get_diagram(diagram_id)
         if not diagram:
             return {
-                'success': False,
-                'error': f'Diagram {diagram_id} not found',
+                "success": False,
+                "error": f"Diagram {diagram_id} not found",
             }
 
         return {
-            'success': True,
-            'diagram_id': diagram.diagram_id,
-            'num_nodes': diagram.num_nodes(),
-            'num_edges': diagram.num_edges(),
-            'root_node': diagram.root_node,
-            'nodes': [
+            "success": True,
+            "diagram_id": diagram.diagram_id,
+            "num_nodes": diagram.num_nodes(),
+            "num_edges": diagram.num_edges(),
+            "root_node": diagram.root_node,
+            "nodes": [
                 {
-                    'id': node.id,
-                    'label': node.label,
-                    'type': node.node_type,
-                    'metadata': node.metadata,
+                    "id": node.id,
+                    "label": node.label,
+                    "type": node.node_type,
+                    "metadata": node.metadata,
                 }
                 for node in diagram.nodes.values()
             ],
-            'edges': [
+            "edges": [
                 {
-                    'source': edge.source,
-                    'target': edge.target,
-                    'label': edge.label,
-                    'weight': edge.weight,
-                    'properties': edge.properties,
+                    "source": edge.source,
+                    "target": edge.target,
+                    "label": edge.label,
+                    "weight": edge.weight,
+                    "properties": edge.properties,
                 }
                 for edge in diagram.edges
             ],
-            'invariants': diagram.invariants,
-            'transformations': diagram.transformations,
+            "invariants": diagram.invariants,
+            "transformations": [
+                {
+                    "rule_name": step.rule_name,
+                    "match_mapping": step.match_mapping,
+                    "timestamp": step.timestamp,
+                    "description": step.description,
+                    "diagram_before": step.diagram_before,
+                    "diagram_after": step.diagram_after,
+                }
+                for step in diagram.transformations
+            ],
         }
-    except Exception as e:
-        logger.error(f"Error loading diagram: {e}")
+    except (ValueError, RuntimeError) as e:
+        logger.error("Error loading diagram", diagram_id=diagram_id, error=str(e), exc_info=True)
         return {
-            'success': False,
-            'error': str(e),
+            "success": False,
+            "error": str(e),
         }
 
 
@@ -155,6 +165,7 @@ def navigate_breadth_first(
     diagram_id: str,
     start_node: str,
     max_depth: int = 5,
+    expand_composites: bool = False,
 ) -> dict[str, Any]:
     """
     Explore diagram structure using breadth-first traversal.
@@ -170,17 +181,30 @@ def navigate_breadth_first(
         dict with explored_nodes, edges_traversed, total_explored
     """
     try:
-        logger.info(f"BFS exploration of {diagram_id} from {start_node}")
-        result = graph_engine.navigate_breadth_first(diagram_id, start_node, max_depth)
+        logger.info(
+            "BFS exploration",
+            diagram_id=diagram_id,
+            start_node=start_node,
+            expand_composites=expand_composites,
+        )
+        result = graph_engine.navigate_breadth_first(
+            diagram_id, start_node, max_depth, expand_composites
+        )
         return {
-            'success': True,
+            "success": True,
             **result,
         }
-    except Exception as e:
-        logger.error(f"Error in BFS navigation: {e}")
+    except ValueError as e:
+        logger.error(
+            "Error in BFS navigation",
+            diagram_id=diagram_id,
+            start_node=start_node,
+            error=str(e),
+            exc_info=True,
+        )
         return {
-            'success': False,
-            'error': str(e),
+            "success": False,
+            "error": str(e),
         }
 
 
@@ -189,7 +213,8 @@ def navigate_guided(
     diagram_id: str,
     start_node: str,
     goal_node: str,
-    heuristic: str = 'distance',
+    heuristic: str = "distance",
+    expand_composites: bool = False,
 ) -> dict[str, Any]:
     """
     Find guided path from start to goal node.
@@ -206,19 +231,32 @@ def navigate_guided(
         dict with path, cost, num_steps, found flag
     """
     try:
-        logger.info(f"Guided navigation in {diagram_id}: {start_node} → {goal_node}")
+        logger.info(
+            "Guided navigation",
+            diagram_id=diagram_id,
+            start_node=start_node,
+            goal_node=goal_node,
+            expand_composites=expand_composites,
+        )
         result = graph_engine.navigate_guided(
-            diagram_id, start_node, goal_node, heuristic
+            diagram_id, start_node, goal_node, heuristic, expand_composites
         )
         return {
-            'success': True,
+            "success": True,
             **result,
         }
-    except Exception as e:
-        logger.error(f"Error in guided navigation: {e}")
+    except ValueError as e:
+        logger.error(
+            "Error in guided navigation",
+            diagram_id=diagram_id,
+            start_node=start_node,
+            goal_node=goal_node,
+            error=str(e),
+            exc_info=True,
+        )
         return {
-            'success': False,
-            'error': str(e),
+            "success": False,
+            "error": str(e),
         }
 
 
@@ -245,20 +283,249 @@ def analyze_reachability(
         logger.info(f"Reachability analysis of {diagram_id} from {source}")
         result = graph_engine.analyze_reachability(diagram_id, source, targets)
         return {
-            'success': True,
+            "success": True,
             **result,
         }
-    except Exception as e:
-        logger.error(f"Error in reachability analysis: {e}")
+    except ValueError as e:
+        logger.error(
+            "Error in reachability analysis",
+            diagram_id=diagram_id,
+            source=source,
+            error=str(e),
+            exc_info=True,
+        )
         return {
-            'success': False,
-            'error': str(e),
+            "success": False,
+            "error": str(e),
+        }
+
+
+@server.tool()
+def explore_reasoning_space(
+    diagram_id: str,
+    start_node: str,
+    steps: int = 5,
+    temperature: float = 0.5,
+) -> dict[str, Any]:
+    """
+    Wander the diagram based on a curiosity metric using NavigationMemory.
+
+    Prioritizes nodes that have a low exploration_count.
+
+    Args:
+        diagram_id: ID of diagram
+        start_node: Starting node ID
+        steps: Number of steps to take (default: 5)
+        temperature: Exploration factor (0.0 = greedy unvisited, 1.0 = highly random)
+
+    Returns:
+        dict with path, steps_taken, and updated exploration_counts
+    """
+    try:
+        logger.info(
+            "Curious exploration",
+            diagram_id=diagram_id,
+            start_node=start_node,
+            steps=steps,
+            temperature=temperature,
+        )
+        result = graph_engine.explore_reasoning_space(diagram_id, start_node, steps, temperature)
+        return {
+            "success": True,
+            **result,
+        }
+    except ValueError as e:
+        logger.error(
+            "Error in exploratory navigation",
+            diagram_id=diagram_id,
+            start_node=start_node,
+            error=str(e),
+            exc_info=True,
+        )
+        return {
+            "success": False,
+            "error": str(e),
+        }
+
+
+@server.tool()
+def diagram_extract(
+    diagram_id: str, node_ids: list[str], composite_label: str = "Extracted Subdiagram"
+) -> dict[str, Any]:
+    """
+    Extract a subgraph into a composite node.
+
+    Args:
+        diagram_id: Source diagram ID
+        node_ids: List of nodes to extract
+        composite_label: Label for the new composite node
+
+    Returns:
+        dict containing success status, new diagram ID, and new composite node ID
+    """
+    try:
+        logger.info(f"Extracting subgraph from {diagram_id}")
+        result = graph_engine.diagram_extract(diagram_id, node_ids, composite_label)
+        return result
+    except ValueError as e:
+        logger.error(
+            "Error extracting subgraph",
+            diagram_id=diagram_id,
+            node_ids=node_ids,
+            error=str(e),
+            exc_info=True,
+        )
+        return {
+            "success": False,
+            "error": str(e),
         }
 
 
 # ============================================================================
-# Tool: Pattern Matching
+# Tool: Pattern Matching & Rewriting
 # ============================================================================
+
+
+@server.tool()
+def apply_rewrite_rule(
+    diagram_id: str,
+    rule_spec: dict[str, Any],
+    match_mapping: dict[str, str],
+) -> dict[str, Any]:
+    """
+    Apply a formal Double-Pushout (DPO) rewrite rule to a diagram.
+
+    Args:
+        diagram_id: Target diagram ID
+        rule_spec: Serialize RewriteRule dict with 'lhs' and 'rhs' patterns
+        match_mapping: Mapping of rule LHS node IDs to diagram node IDs (from pattern_match)
+
+    Returns:
+        dict containing success status and modified diagram stats
+    """
+    try:
+        rule_name = rule_spec.get("rule_name", "Unnamed Rule")
+        logger.info(f"Applying rewrite rule '{rule_name}' to {diagram_id}")
+
+        result = graph_engine.apply_rewrite_rule(diagram_id, rule_spec, match_mapping)
+        return {
+            "success": True,
+            **result,
+        }
+    except ValueError as e:
+        logger.error(
+            "Error applying rewrite rule",
+            diagram_id=diagram_id,
+            rule_name=rule_name,
+            error=str(e),
+            exc_info=True,
+        )
+        return {
+            "success": False,
+            "error": str(e),
+        }
+
+
+@server.tool()
+def export_proof(diagram_id: str, output_format: str = "text") -> dict[str, Any]:
+    """
+    Export a diagram's transformation history as a structured proof.
+
+    Args:
+        diagram_id: ID of diagram to export proof for
+        output_format: 'text' (natural language) or 'json' (structured)
+
+    Returns:
+        dict with proof steps and metadata
+    """
+    try:
+        diagram = graph_engine.get_diagram(diagram_id)
+        if not diagram:
+            return {"success": False, "error": f"Diagram {diagram_id} not found"}
+
+        if output_format == "json":
+            steps = [
+                {
+                    "rule_name": s.rule_name,
+                    "match_mapping": s.match_mapping,
+                    "timestamp": s.timestamp,
+                    "description": s.description,
+                }
+                for s in diagram.transformations
+            ]
+            return {"success": True, "diagram_id": diagram_id, "steps": steps}
+
+        # Default: text format
+        lines = [f"Proof Derivation for Diagram {diagram_id}:"]
+        for i, s in enumerate(diagram.transformations, 1):
+            lines.append(f"{i}. {s.description or f'Applied {s.rule_name}'}")
+
+        return {"success": True, "diagram_id": diagram_id, "proof": "\n".join(lines)}
+    except ValueError as e:
+        logger.error("Error exporting proof", diagram_id=diagram_id, error=str(e), exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@server.tool()
+def check_diagram_equivalence(diagram_id_1: str, diagram_id_2: str) -> dict[str, Any]:
+    """
+    Check if two diagrams are structurally equivalent (isomorphic).
+
+    Args:
+        diagram_id_1: First diagram ID
+        diagram_id_2: Second diagram ID
+
+    Returns:
+        dict with equivalence status
+    """
+    try:
+        logger.info(f"Checking equivalence between {diagram_id_1} and {diagram_id_2}")
+        is_equivalent = graph_engine.check_diagram_equivalence(diagram_id_1, diagram_id_2)
+        return {
+            "success": True,
+            "is_equivalent": is_equivalent,
+        }
+    except ValueError as e:
+        logger.error("Error checking equivalence", error=str(e), exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@server.tool()
+def explore_equivalent_states(
+    diagram_id: str,
+    rules: list[dict[str, Any]],
+    max_depth: int = 3,
+    max_states: int = 20,
+) -> dict[str, Any]:
+    """
+    Explore alternative diagram states reachable via rewrite rules.
+
+    Constructs a meta-graph of structurally unique diagram configurations.
+
+    Args:
+        diagram_id: Starting diagram ID
+        rules: List of serialized RewriteRule dicts
+        max_depth: Maximum BFS depth
+        max_states: Maximum number of unique states to discover
+
+    Returns:
+        dict with metadata about discovery and unique states
+    """
+    try:
+        logger.info(f"Exploring state space for {diagram_id} with {len(rules)} rules")
+        result = graph_engine.explore_equivalent_states(diagram_id, rules, max_depth, max_states)
+        return {
+            "success": True,
+            **result,
+        }
+    except ValueError as e:
+        logger.error(
+            "Error exploring equivalent states",
+            diagram_id=diagram_id,
+            error=str(e),
+            exc_info=True,
+        )
+        return {"success": False, "error": str(e)}
 
 
 @server.tool()
@@ -283,14 +550,19 @@ def pattern_match(
         logger.info(f"Pattern matching in {diagram_id}")
         result = graph_engine.pattern_match(diagram_id, pattern)
         return {
-            'success': True,
+            "success": True,
             **result,
         }
-    except Exception as e:
-        logger.error(f"Error in pattern matching: {e}")
+    except ValueError as e:
+        logger.error(
+            "Error in pattern matching",
+            diagram_id=diagram_id,
+            error=str(e),
+            exc_info=True,
+        )
         return {
-            'success': False,
-            'error': str(e),
+            "success": False,
+            "error": str(e),
         }
 
 
@@ -326,14 +598,20 @@ def compute_metrics(
         logger.info(f"Computing metrics for {diagram_id}: {metrics}")
         result = graph_engine.compute_metrics(diagram_id, metrics)
         return {
-            'success': True,
-            'metrics': result,
+            "success": True,
+            "metrics": result,
         }
-    except Exception as e:
-        logger.error(f"Error computing metrics: {e}")
+    except ValueError as e:
+        logger.error(
+            "Error computing metrics",
+            diagram_id=diagram_id,
+            metrics=metrics,
+            error=str(e),
+            exc_info=True,
+        )
         return {
-            'success': False,
-            'error': str(e),
+            "success": False,
+            "error": str(e),
         }
 
 
@@ -358,18 +636,22 @@ def node_semantic_search(
     """
     try:
         logger.info(f"Semantic search in {diagram_id} for top {top_k} matches")
-        result = graph_engine.node_semantic_search(
-            diagram_id, target_embedding, top_k, threshold
-        )
+        result = graph_engine.node_semantic_search(diagram_id, target_embedding, top_k, threshold)
         return {
-            'success': True,
+            "success": True,
             **result,
         }
-    except Exception as e:
-        logger.error(f"Error in semantic search: {e}")
+    except ValueError as e:
+        logger.error(
+            "Error in semantic search",
+            diagram_id=diagram_id,
+            top_k=top_k,
+            error=str(e),
+            exc_info=True,
+        )
         return {
-            'success': False,
-            'error': str(e),
+            "success": False,
+            "error": str(e),
         }
 
 
@@ -387,26 +669,35 @@ def server_info() -> dict[str, Any]:
         dict with version, capabilities, active_diagrams, resources
     """
     return {
-        'name': 'Cognitive Diagram Navigation MCP',
-        'version': '0.1.0',
-        'capabilities': [
-            'diagram_creation',
-            'graph_navigation',
-            'pattern_matching',
-            'metric_computation',
-            'reachability_analysis',
+        "name": "Cognitive Diagram Navigation MCP",
+        "version": "0.1.0",
+        "capabilities": [
+            "diagram_creation",
+            "graph_navigation",
+            "pattern_matching",
+            "metric_computation",
+            "reachability_analysis",
+            "proof_export",
+            "state_space_exploration",
+            "structural_equivalence",
         ],
-        'active_diagrams': len(graph_engine.diagrams),
-        'max_diagrams': graph_engine.max_diagrams,
-        'tools': [
-            'diagram_create',
-            'diagram_load',
-            'navigate_breadth_first',
-            'navigate_guided',
-            'analyze_reachability',
-            'pattern_match',
-            'compute_metrics',
-            'server_info',
+        "active_diagrams": len(graph_engine.diagrams),
+        "max_diagrams": graph_engine.max_diagrams,
+        "tools": [
+            "diagram_create",
+            "diagram_load",
+            "navigate_breadth_first",
+            "navigate_guided",
+            "analyze_reachability",
+            "explore_reasoning_space",
+            "diagram_extract",
+            "pattern_match",
+            "apply_rewrite_rule",
+            "export_proof",
+            "check_diagram_equivalence",
+            "explore_equivalent_states",
+            "compute_metrics",
+            "server_info",
         ],
     }
 
@@ -417,5 +708,5 @@ def main() -> None:
     server.run()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
