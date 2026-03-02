@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "cognitive-diagram-nav": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/home/ty/Repositories/ai_workspace/cognitive-diagram-nav-mcp",
+        "run",
+        "cognitive-diagram-nav"
+      ]
+    }
+  }
+}

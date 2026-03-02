@@ -1,0 +1,70 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cognitive-diagram-nav-mcp"
+version = "0.1.0"
+description = "MCP server for cognitive diagram navigation - diagrammatic reasoning with memory-augmented spatial exploration"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+authors = [
+    {name = "Ty", email = "angrysky56@github.com"}
+]
+keywords = [
+    "mcp",
+    "diagrammatic-reasoning",
+    "graph-rewriting",
+    "cognitive-navigation",
+    "chain-of-thought",
+    "proof-assistant"
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "mcp>=1.0.0",
+    "networkx>=3.3",
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "structlog>=24.1.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "black>=24.1.0",
+    "ruff>=0.2.0",
+    "mypy>=1.8.0",
+    "pre-commit>=3.6.0",
+]
+
+[project.scripts]
+cognitive-diagram-nav = "cognitive_diagram_nav.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cognitive_diagram_nav"]
+
+[tool.black]
+line-length = 100
+target-version = ['py312', 'py313']
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.mypy]
+python_version = "3.12"
+check_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_defs = true

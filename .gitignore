@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+ENV/
+build/
+dist/
+*.egg-info/
+
+# Tests
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs & Temporary Files
+*.log
+stderr_help.txt
+stdout_help.txt
+stderr_output.txt
+stdout_output.txt
+
+# Environment
+.env
+
+# IDEs
+.vscode/
+.idea/
